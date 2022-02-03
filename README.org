@@ -1,4 +1,8 @@
-* Omniconf
+* Omnifun
+
+  This is a fork from `omniconf` which makes all the applicable functions take an
+  component as the first argument so you are able to have multiple configurations
+  at the same time. README was updated with the new usages.
 
   I [[CHANGELOG.md][https://img.shields.io/badge/-changelog-blue.svg]] I [[https://circleci.com/gh/grammarly/omniconf][https://circleci.com/gh/grammarly/omniconf/tree/master.png]] I [[https://clojars.org/com.grammarly/omniconf][16.4k downloads]] I
 
@@ -46,9 +50,7 @@
 
 ** Installation
 
-   Add this line to your list of dependencies:
-
-   [[https://clojars.org/com.grammarly/omniconf][https://clojars.org/com.grammarly/omniconf/latest-version.svg]]
+   Use the git SHA.
 
 ** Usage
 
@@ -58,7 +60,11 @@
 
       #+BEGIN_SRC clojure
 (require '[omniconf.core :as cfg])
-(cfg/define
+
+;; Start
+(def config-comp (cfg/init-component))
+
+(cfg/define config-comp
   {:hostname {:description "where service is deployed"
               :type :string
               :required true}
@@ -72,11 +78,11 @@
    2. Populate the configuration from available sources:
 
       #+BEGIN_SRC clojure
-      (cfg/populate-from-cmd args) ;; args is a command-line arguments list
-      (when-let [conf (cfg/get :conf)]
-        (cfg/populate-from-file conf))
-      (cfg/populate-from-properties)
-      (cfg/populate-from-env)
+      (cfg/populate-from-cmd config-comp args) ;; args is a command-line arguments list
+      (when-let [conf (cfg/get config-comp :conf)]
+        (cfg/populate-from-file config-comp conf))
+      (cfg/populate-from-properties config-comp)
+      (cfg/populate-from-env config-comp)
       #+END_SRC
 
       The order in which to tap the sources is up to you. Perhaps you want to
@@ -89,7 +95,7 @@
       the whole configuration is guaranteed to be complete and correct.
 
       #+BEGIN_SRC clojure
-      (cfg/verify)
+      (cfg/verify config-comp)
       #+END_SRC
 
       If there is something wrong with the configuration, =verify= will throw a
@@ -105,23 +111,23 @@
    4. Use =get= to extract arbitrary value from the configuration.
 
       #+BEGIN_SRC clojure
-      (cfg/get :hostname)
+      (cfg/get config-comp :hostname)
       #+END_SRC
 
       For nested values you can pass an address of the value, either as a vector, or
       like varargs:
 
       #+BEGIN_SRC clojure
-      (cfg/get :database :ip)
-      (cfg/get [:database :ip])
+      (cfg/get config-comp :database :ip)
+      (cfg/get config-comp [:database :ip])
       #+END_SRC
 
       =set= allows you to change a value. It is definitely not recommended to
       be used in production code, but may be convenient during development:
 
       #+BEGIN_SRC clojure
-      (cfg/set :database :port 3306)
-      (cfg/set [:database :port] 3306)
+      (cfg/set config-comp :database :port 3306)
+      (cfg/set config-comp [:database :port] 3306)
       #+END_SRC
 
 ** Examples
@@ -163,7 +169,7 @@
      Boolean types have special treatment. When setting them from the command
      line, one can omit the value completely.
 
-     : (cfg/define {:foo {:type :boolean}, :bar {:type :boolean}})
+     : (cfg/define config-comp {:foo {:type :boolean}, :bar {:type :boolean}})
      : ...
      : $ my-app --foo --bar    # Confmap is {:foo true, :baz true}
 
@@ -182,17 +188,17 @@
      actual default value. This function will be invoked during the verification
      phase or on first direct access to the value, whichever happens first;
      thus, default functions will have access to other config values provided by
-     the user. Note that you must invoke =(cfg/enable-functions-as-defaults)=
+     the user. Note that you must invoke =(cfg/enable-functions-as-defaults config-comp)=
      first for this feature to work. Example:
 
      #+BEGIN_SRC clojure
-     (cfg/enable-functions-as-defaults)
-     (cfg/define {:host {:type :string}
-                  :port {:type :number}
-                  :connstring {:type :string
-                               :default #(str (cfg/get :host) ":" (cfg/get :port))}})
-     (cfg/populate-from-map {:host "localhost", :port 8888})
-     (cfg/get :connstring) ;; => "localhost:8888"
+     (cfg/enable-functions-as-defaults config-comp)
+     (cfg/define config-comp {:host {:type :string}
+                             :port {:type :number}
+                             :connstring {:type :string
+                                          :default #(str (cfg/get config-comp :host) ":" (cfg/get config-comp :port))}})
+     (cfg/populate-from-map config-comp {:host "localhost", :port 8888})
+     (cfg/get config-comp :connstring) ;; => "localhost:8888"
      #+END_SRC
 
      Even if a config option has a functional default, its value can be
@@ -209,8 +215,8 @@
      values of some other options. Example:
 
      #+BEGIN_SRC clojure
-     (cfg/define {:storage   {:one-of [:file :s3]}
-                  :s3-bucket {:required #(= (cfg/get :storage) :s3)}})
+     (cfg/define config-comp {:storage   {:one-of [:file :s3]}
+                              :s3-bucket {:required #(= (cfg/get config-comp :storage) :s3)}})
      #+END_SRC
 
    - =:one-of= --- a sequence of values that an option is allowed to take. If
@@ -239,7 +245,7 @@
      ones: they can have parsers, verifiers, defaults, etc. Example:
 
      #+BEGIN_SRC clojure
-(cfg/define
+(cfg/define config-comp
   {:statsd {:nested {:host {:type :string
                             :required true
                             :description "IP address of the StatsD server"}
@@ -255,12 +261,12 @@
      : [:statsd :host]    =>    -Dstatsd.host   (properties)
      : [:statsd :host]    =>    STATSD__HOST    (env variables)
 
-     In the program you can use =cfg/get= to fetch a concrete value, or a whole
+     In the program you can use =cfg/get config-comp= to fetch a concrete value, or a whole
      map at any level:
 
      #+BEGIN_SRC clojure
-     (cfg/get :statsd :port) ;=> 8125
-     (cfg/get :statsd) ;=> {:host "127.0.0.1", :port 8125}
+     (cfg/get config-comp :statsd :port) ;=> 8125
+     (cfg/get config-comp :statsd) ;=> {:host "127.0.0.1", :port 8125}
      #+END_SRC
 
    - =:secret= --- if true, the value of this option won't be printed out by
@@ -289,10 +295,10 @@
    contain library specific reader macros. For example:
 
    #+BEGIN_SRC clojure
-   (cfg/populate-from-cmd args) ;; args is a command-line arguments list
-   (when-let [conf (cfg/get :conf)]
+   (cfg/populate-from-cmd config-comp args) ;; args is a command-line arguments list
+   (when-let [conf (cfg/get config-comp :conf)]
      (binding [cfg/*data-readers* {'ig/ref ig/ref 'ig/refset ig/refset}] ; e.g. reader macros used by integrant
-       (cfg/populate-from-file conf)))
+       (cfg/populate-from-file config-comp conf)))
    #+END_SRC
 
 ** Fetching configuration from AWS Systems Manager (SSM)
@@ -311,11 +317,11 @@
    parameters. For example:
 
    #+BEGIN_SRC clojure
-(cfg/define
+(cfg/define config-comp
   {:db {:nested {:password {:type :string
                             :secret true}}}})
 
-(cfg/populate-from-ssm "/prod/myapp/")
+(cfg/populate-from-ssm config-comp "/prod/myapp/")
    #+END_SRC
 
    This will fetch =/prod/myapp/db/password= parameter from SSM and save it as
@@ -324,14 +330,14 @@
    You can also specify explicit mapping between SSM and Omniconf like this:
 
    #+BEGIN_SRC clojure
-(cfg/define
+(cfg/define config-comp
   {:db {:nested {:password {:type :string
                             :secret true}}}
    :github-token {:type :string
                   :secret true
                   :ssm-name "/myteam/github/oauth-token"}})
 
-(cfg/populate-from-ssm "/prod/myapp/")
+(cfg/populate-from-ssm config-comp "/prod/myapp/")
    #+END_SRC
 
    Parameters with an absolute =:ssm-name= parameter will ignore the =path=
@@ -341,12 +347,12 @@
    path:
 
    #+BEGIN_SRC clojure
-(cfg/define
+(cfg/define config-comp
   {:db {:nested {:password {:type :string
                             :secret true
                             :ssm-name "./db-pass"}}}})
 
-(cfg/populate-from-ssm "/prod/myapp/")
+(cfg/populate-from-ssm config-comp "/prod/myapp/")
    #+END_SRC
 
    This will set =[:db :password]= parameter from =/prod/myapp/db-pass=.
@@ -370,7 +376,7 @@
 
     #+BEGIN_SRC clojure
 ;; Poll values under /prod/myapp/ prefix (and all absolute :ssm-name values too) every 10 seconds.
-(cfg/populate-from-ssm-continually "/prod/myapp/" 10)
+(cfg/populate-from-ssm-continually config-comp "/prod/myapp/" 10)
     #+END_SRC
 
     Note that for now, the verification step is not re-run after fetching
@@ -417,8 +423,8 @@
     possible right now.
 
     #+BEGIN_SRC clojure
-(cfg/with-options [username password]
-  ;; Binds (cfg/get :username) to username, and (cfg/get :password) to password.
+(cfg/with-options config-comp [username password]
+  ;; Binds (cfg/get config-comp :username) to username, and (cfg/get config-comp :password) to password.
   ...)
     #+END_SRC
 
@@ -430,11 +436,11 @@
     Example:
 
     #+BEGIN_SRC clojure
-    (cfg/define {:emails {:type :edn
-                          :default ["admin1@corp.org" "admin2@corp.org"]}
-                 :roles  {:type :edn
-                          :default {"admin1@corp.org" :admin
-                                    "admin2@corp.org" :admin}}})
+    (cfg/define config-comp {:emails {:type :edn
+                             :default ["admin1@corp.org" "admin2@corp.org"]}
+                             :roles  {:type :edn
+                             :default {"admin1@corp.org" :admin
+                                       "admin2@corp.org" :admin}}})
     ...
     $ my-app --emails '^:concat ["user1@corp.org"]' --roles '^:merge {"user1@corp.org" :user}'
     #+END_SRC
@@ -448,7 +454,7 @@
 
     #+BEGIN_SRC clojure
 (require '[taoensso.timbre :as log])
-(cfg/set-logging-fn (fn [& args] (log/info (str/join " " args))))
+(cfg/set-logging-fn config-comp (fn [& args] (log/info (str/join " " args))))
     #+END_SRC
 
 ** License
